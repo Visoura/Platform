@@ -73,14 +73,14 @@ function TerminateConfirmModal({
 
 function SessionCard({
   session,
-  onResume,
+  onOpen,
   onTerminate,
 }: {
   session: Session;
-  onResume: () => void;
+  onOpen: () => void;
   onTerminate: () => void;
 }) {
-  const isRunning = session.status === 'running';
+  const isActive = session.status === 'active';
 
   return (
     <motion.div
@@ -101,19 +101,19 @@ function SessionCard({
             </div>
             <div className="flex items-center gap-1.5 text-[#475569] text-xs">
               <Clock className="w-3 h-3" />
-              <span>{session.createdAt}</span>
+              <span>{new Date(session.createdAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}</span>
             </div>
           </div>
         </div>
 
         {/* Status Badge */}
         <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] shrink-0 ${
-          isRunning
+          isActive
             ? 'bg-[#22C55E]/10 border border-[#22C55E]/30 text-[#22C55E]'
             : 'bg-[#475569]/10 border border-[#475569]/30 text-[#475569]'
         }`}>
-          <div className={`w-1.5 h-1.5 rounded-full ${isRunning ? 'bg-[#22C55E] animate-pulse' : 'bg-[#475569]'}`} />
-          {isRunning ? 'Running' : 'Stopped'}
+          <div className={`w-1.5 h-1.5 rounded-full ${isActive ? 'bg-[#22C55E] animate-pulse' : 'bg-[#475569]'}`} />
+          {isActive ? 'Active' : 'Terminated'}
         </div>
       </div>
 
@@ -123,7 +123,7 @@ function SessionCard({
           <div
             key={i}
             className={`flex-1 h-1.5 rounded-full ${
-              isRunning ? 'bg-[#3B82F6]/50' : 'bg-[#1E293B]'
+              isActive ? 'bg-[#3B82F6]/50' : 'bg-[#1E293B]'
             }`}
           />
         ))}
@@ -132,19 +132,21 @@ function SessionCard({
       {/* Actions */}
       <div className="flex gap-2">
         <button
-          onClick={onResume}
+          onClick={onOpen}
           className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-[#3B82F6] hover:bg-[#2563EB] text-white rounded-xl text-xs transition-colors"
         >
           <Play className="w-3.5 h-3.5" />
-          {isRunning ? 'Open Dashboard' : 'Resume Session'}
+          Open Dashboard
         </button>
-        <button
-          onClick={onTerminate}
-          className="flex items-center justify-center gap-2 px-3 py-2 bg-red-600/10 hover:bg-red-600/20 border border-red-500/30 text-red-400 rounded-xl text-xs transition-colors"
-        >
-          <Square className="w-3.5 h-3.5" />
-          Terminate
-        </button>
+        {isActive && (
+          <button
+            onClick={onTerminate}
+            className="flex items-center justify-center gap-2 px-3 py-2 bg-red-600/10 hover:bg-red-600/20 border border-red-500/30 text-red-400 rounded-xl text-xs transition-colors"
+          >
+            <Square className="w-3.5 h-3.5" />
+            Terminate
+          </button>
+        )}
       </div>
     </motion.div>
   );
@@ -152,7 +154,7 @@ function SessionCard({
 
 export function Home() {
   const navigate = useNavigate();
-  const { sessions, terminateSession, resumeSession } = useSessionContext();
+  const { sessions, terminateSession } = useSessionContext();
   const [terminateTarget, setTerminateTarget] = useState<Session | null>(null);
 
   const handleTerminateConfirm = () => {
@@ -160,11 +162,6 @@ export function Home() {
       terminateSession(terminateTarget.id);
       setTerminateTarget(null);
     }
-  };
-
-  const handleResume = (session: Session) => {
-    if (session.status === 'stopped') resumeSession(session.id);
-    navigate(`/session/${session.id}`);
   };
 
   return (
@@ -233,10 +230,10 @@ export function Home() {
         </motion.button>
       </div>
 
-      {/* Active Sessions */}
+      {/* Sessions */}
       <div className="flex-1 max-w-4xl w-full mx-auto px-6 pb-12">
         <div className="flex items-center gap-3 mb-5">
-          <h2 className="text-[#94A3B8] text-xs uppercase tracking-widest">Active Sessions</h2>
+          <h2 className="text-[#94A3B8] text-xs uppercase tracking-widest">Sessions</h2>
           {sessions.length > 0 && (
             <span className="px-2 py-0.5 bg-[#3B82F6]/10 border border-[#3B82F6]/20 text-[#3B82F6] text-[10px] rounded-full">
               {sessions.length}
@@ -267,7 +264,7 @@ export function Home() {
                 <SessionCard
                   key={session.id}
                   session={session}
-                  onResume={() => handleResume(session)}
+                  onOpen={() => navigate(`/session/${session.id}`)}
                   onTerminate={() => setTerminateTarget(session)}
                 />
               ))}

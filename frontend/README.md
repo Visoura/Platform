@@ -1,0 +1,17 @@
+# Platform
+
+AI Surveillance Dashboard frontend, implemented in React from the Figma design at
+https://www.figma.com/design/Fd00WBBxRzwJEcLfCPhWT8/AI-Surveillance-Dashboard-Design.
+
+## Running the code
+
+```
+npm install
+npm run dev
+```
+
+## Build
+
+```
+npm run build
+```
