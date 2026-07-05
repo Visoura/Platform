@@ -17,16 +17,16 @@ export function GlobalControls({
 
   return (
     <div
-      className="bg-[#0D1220] border-t border-[#3B82F6]/15 px-4 flex items-center justify-between shrink-0"
+      className="bg-[#0D1220] border-t border-[#3B82F6]/15 px-4 flex items-center shrink-0 relative"
       style={{ height: 46 }}
     >
-      {/* Left: label */}
+      {/* Left: label — anchored left */}
       <span className="text-[9px] text-[#475569] font-medium uppercase tracking-widest select-none whitespace-nowrap">
         Global
       </span>
 
-      {/* Center: playback controls */}
-      <div className="flex items-center gap-1">
+      {/* Center: playback controls — absolutely centered in bar */}
+      <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 flex items-center gap-1">
         {/* Reverse */}
         <button
           title="Reverse"
@@ -65,8 +65,8 @@ export function GlobalControls({
         </button>
       </div>
 
-      {/* Right: speed selector */}
-      <div className="flex items-center gap-0.5 bg-[#0B0F19] rounded-md p-0.5 border border-[#3B82F6]/10">
+      {/* Right: speed selector — anchored right */}
+      <div className="ml-auto flex items-center gap-0.5 bg-[#0B0F19] rounded-md p-0.5 border border-[#3B82F6]/10">
         {speeds.map((s) => (
           <button
             key={s}

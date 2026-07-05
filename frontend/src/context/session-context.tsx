@@ -16,16 +16,24 @@ interface SessionContextType {
   loading: boolean;
   createSession: (cameraIds: number[]) => Promise<Session>;
   terminateSession: (id: string) => Promise<void>;
+  restartSession: (id: string) => Promise<Session>;
   refreshSessions: () => Promise<void>;
   getElapsed: (session: Session) => number;
 }
 
 const SessionContext = createContext<SessionContextType | null>(null);
 
+function formatSessionName(createdAt: string): string {
+  const when = new Date(createdAt).toLocaleString('en-US', {
+    month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit',
+  });
+  return `Session – ${when}`;
+}
+
 function toSession(raw: ApiSession): Session {
   return {
     id: raw.id,
-    name: `Session #${raw.id.slice(0, 8)}`,
+    name: formatSessionName(raw.created_at),
     cameras: raw.cameras_detail,
     cameraCount: raw.cameras_detail.length,
     status: raw.status,
@@ -74,9 +82,23 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     );
   }, []);
 
+  // A real terminate-then-recreate, not a fake pause/resume - our backend only
+  // supports one-way active->terminated, so "restart" means ending this
+  // session and starting a fresh one with the same cameras (new id, new URL).
+  const restartSession = useCallback(
+    async (id: string): Promise<Session> => {
+      const current = sessions.find((s) => s.id === id);
+      if (!current) throw new Error('Session not found');
+      const cameraIds = current.cameras.map((c) => c.id);
+      await terminateSession(id);
+      return createSession(cameraIds);
+    },
+    [sessions, terminateSession, createSession]
+  );
+
   return (
     <SessionContext.Provider
-      value={{ sessions, loading, createSession, terminateSession, refreshSessions, getElapsed }}
+      value={{ sessions, loading, createSession, terminateSession, restartSession, refreshSessions, getElapsed }}
     >
       {children}
     </SessionContext.Provider>

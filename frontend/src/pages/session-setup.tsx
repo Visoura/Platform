@@ -4,7 +4,8 @@ import { motion, AnimatePresence } from 'motion/react';
 import { ArrowLeft, Play, Check, Camera, Loader2 } from 'lucide-react';
 import { useSessionContext } from '../context/session-context';
 import { api, ApiCamera } from '../lib/api';
-import { EyeLogo } from '../components/eye-logo';
+import { VisouraWordmark } from '../components/visoura-wordmark';
+import { IntroSplash } from '../components/intro-splash';
 
 const MAX_CAMERAS = 4;
 
@@ -83,6 +84,7 @@ export function SessionSetup() {
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [starting, setStarting] = useState(false);
   const [startError, setStartError] = useState<string | null>(null);
+  const [loadingSessionId, setLoadingSessionId] = useState<string | null>(null);
 
   useEffect(() => {
     api
@@ -104,12 +106,17 @@ export function SessionSetup() {
     });
   };
 
+  const selectFirst4 = () => setSelectedIds(new Set(cameras.slice(0, MAX_CAMERAS).map((c) => c.id)));
+  const clearAll = () => setSelectedIds(new Set());
+  const allFirstFourSelected =
+    cameras.length > 0 && cameras.slice(0, MAX_CAMERAS).every((c) => selectedIds.has(c.id));
+
   const handleStart = async () => {
     setStartError(null);
     setStarting(true);
     try {
       const session = await createSession(Array.from(selectedIds));
-      navigate(`/session/${session.id}`);
+      setLoadingSessionId(session.id);
     } catch (e) {
       setStartError(e instanceof Error ? e.message : 'Failed to start session');
       setStarting(false);
@@ -117,6 +124,10 @@ export function SessionSetup() {
   };
 
   const selectedCount = selectedIds.size;
+
+  if (loadingSessionId) {
+    return <IntroSplash onComplete={() => navigate(`/session/${loadingSessionId}`)} />;
+  }
 
   return (
     <div className="min-h-screen bg-[#080C15] text-[#E5E7EB] flex flex-col">
@@ -130,7 +141,7 @@ export function SessionSetup() {
           <ArrowLeft className="w-4 h-4" />
           Back
         </button>
-        <EyeLogo className="h-[18px] w-auto" style={{ filter: 'drop-shadow(0 0 6px rgba(59,130,246,0.4))' }} />
+        <VisouraWordmark size="sm" style={{ opacity: 0.5 }} />
       </div>
 
       {/* Content */}
@@ -166,6 +177,28 @@ export function SessionSetup() {
               {cameras.length}
             </span>
           </div>
+          {cameras.length > 0 && (
+            <div className="flex items-center gap-3">
+              <AnimatePresence>
+                {selectedCount >= MAX_CAMERAS && (
+                  <motion.span
+                    initial={{ opacity: 0, x: 8 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    exit={{ opacity: 0, x: 8 }}
+                    className="text-[10px] text-[#F59E0B] border border-[#F59E0B]/30 bg-[#F59E0B]/10 px-2 py-0.5 rounded-full"
+                  >
+                    Max reached
+                  </motion.span>
+                )}
+              </AnimatePresence>
+              <button
+                onClick={allFirstFourSelected ? clearAll : selectFirst4}
+                className="text-xs text-[#3B82F6] hover:text-[#60A5FA] transition-colors"
+              >
+                {allFirstFourSelected ? 'Clear all' : 'Select first 4'}
+              </button>
+            </div>
+          )}
         </motion.div>
 
         {loadingCameras ? (
@@ -226,8 +259,27 @@ export function SessionSetup() {
                   exit={{ opacity: 0, x: -8 }}
                   className="flex items-center gap-2 text-sm"
                 >
+                  <div className="flex gap-1">
+                    {Array.from(selectedIds).map((id) => {
+                      const cam = cameras.find((c) => c.id === id);
+                      return (
+                        <div
+                          key={id}
+                          className="w-6 h-6 rounded-md bg-[#3B82F6]/20 border border-[#3B82F6]/40 flex items-center justify-center"
+                          title={cam?.name}
+                        >
+                          <span className="text-[#3B82F6] text-[9px]" style={{ fontWeight: 700 }}>{id}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
                   <span className="text-[#94A3B8]">
-                    <span className="text-[#E5E7EB]" style={{ fontWeight: 500 }}>{selectedCount}</span>
+                    <span
+                      className={selectedCount >= MAX_CAMERAS ? 'text-[#F59E0B]' : 'text-[#E5E7EB]'}
+                      style={{ fontWeight: 500 }}
+                    >
+                      {selectedCount}
+                    </span>
                     {' '}/ {MAX_CAMERAS} camera{selectedCount !== 1 ? 's' : ''} selected
                   </span>
                 </motion.div>

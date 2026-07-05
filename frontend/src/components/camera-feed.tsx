@@ -9,8 +9,12 @@ interface CameraFeedProps {
   isSelected: boolean;
   onSelect: () => void;
   feedStore: RefObject<FeedStore>;
-  onTrackClick: (cameraId: number, frameSeq: number, xFrac: number, yFrac: number) => void;
-  onUntrackClick: (targetId: string) => void;
+  /** Clicked a box that's already tracked - opens the Stop Tracking/History
+   * card directly, no API round-trip needed (we already have target_id). */
+  onTrackedBoxClick: (cameraId: number, targetId: string) => void;
+  /** Clicked somewhere without an already-tracked box - resolves via the
+   * preview API (no_detection / single / ambiguous). */
+  onDetectionClick: (cameraId: number, frameSeq: number, xFrac: number, yFrac: number) => void;
   pendingCandidates?: TrackingCandidate[] | null;
   onPickCandidate?: (index: number) => void;
 }
@@ -26,8 +30,8 @@ export function CameraFeed({
   isSelected,
   onSelect,
   feedStore,
-  onTrackClick,
-  onUntrackClick,
+  onTrackedBoxClick,
+  onDetectionClick,
   pendingCandidates,
   onPickCandidate,
 }: CameraFeedProps) {
@@ -79,19 +83,19 @@ export function CameraFeed({
     const relY = e.clientY - display.rect.top - display.offsetY;
     if (relX < 0 || relY < 0 || relX > display.dispW || relY > display.dispH) return; // clicked the letterbox bars
 
-    // Clicking an already-tracked person untracks just that one person,
-    // instead of starting a new track on top of them.
+    // Clicking an already-tracked person opens the Stop Tracking/History
+    // card directly, instead of resolving a fresh detection.
     const natX = relX / display.scale;
     const natY = relY / display.scale;
     const clickedTracked = frameMessage.boxes.find(
       (box) => box.matched && box.target_id && bboxContains(box.bbox, natX, natY)
     );
     if (clickedTracked?.target_id) {
-      onUntrackClick(clickedTracked.target_id);
+      onTrackedBoxClick(cameraId, clickedTracked.target_id);
       return;
     }
 
-    onTrackClick(cameraId, frameMessage.frame_seq, relX / display.dispW, relY / display.dispH);
+    onDetectionClick(cameraId, frameMessage.frame_seq, relX / display.dispW, relY / display.dispH);
   };
 
   const toBoxStyle = (bbox: [number, number, number, number]) => {
@@ -139,7 +143,12 @@ export function CameraFeed({
       </div>
 
       {/* Video Feed */}
-      <div className="relative flex-1 min-h-0 bg-gradient-to-br from-[#0B0F19] to-[#020617] overflow-hidden">
+      <div className="relative flex-1 min-h-0 bg-gradient-to-br from-[#0B0F19] to-[#020617] overflow-hidden group">
+        {frameMessage && imgUrl && !pendingCandidates && (
+          <div className="absolute bottom-2 left-1/2 -translate-x-1/2 z-10 px-2.5 py-1 rounded-md bg-[#0D1220]/90 backdrop-blur-sm text-[#94A3B8] text-[10px] opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
+            Click a person to track · click a tracked person for options
+          </div>
+        )}
         {frameMessage && imgUrl ? (
           <img
             ref={imgRef}
@@ -181,16 +190,27 @@ export function CameraFeed({
           frameMessage?.boxes.map((box, i) => {
             const style = toBoxStyle(box.bbox);
             if (!style) return null;
+            const fromSearch = box.source === 'image_search';
             return (
-              <div
-                key={i}
-                className={`absolute border-2 pointer-events-none ${
-                  box.matched
-                    ? 'border-[#3B82F6] shadow-[0_0_15px_rgba(59,130,246,0.6)]'
-                    : 'border-[#22C55E]'
-                }`}
-                style={style}
-              />
+              <div key={i} className="absolute pointer-events-none" style={style}>
+                <div
+                  className={`absolute inset-0 border-2 ${
+                    fromSearch
+                      ? 'border-[#EF4444] shadow-[0_0_15px_rgba(239,68,68,0.6)]'
+                      : 'border-[#3B82F6] shadow-[0_0_15px_rgba(59,130,246,0.6)]'
+                  }`}
+                />
+                {box.target_id && (
+                  <div
+                    className={`absolute -top-5 left-0 px-1.5 py-0.5 rounded text-[9px] whitespace-nowrap ${
+                      fromSearch ? 'bg-[#EF4444] text-white' : 'bg-[#3B82F6] text-white'
+                    }`}
+                    style={{ fontWeight: 600 }}
+                  >
+                    #{box.target_id.slice(0, 4)}
+                  </div>
+                )}
+              </div>
             );
           })}
 
@@ -210,7 +230,7 @@ export function CameraFeed({
                   }}
                   className="absolute border-2 border-[#F59E0B] bg-[#F59E0B]/10 hover:bg-[#F59E0B]/30 transition-colors z-20"
                   style={style}
-                  title="Track this person"
+                  title="Select this person"
                 />
               );
             })}

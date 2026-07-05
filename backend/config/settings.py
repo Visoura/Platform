@@ -101,7 +101,12 @@ CHANNEL_LAYERS = {
     'default': {
         'BACKEND': 'channels_redis.core.RedisChannelLayer',
         'CONFIG': {
-            'hosts': [REDIS_URL],
+            # socket_timeout must exceed channels_redis's internal BRPOP
+            # timeout (5s) - otherwise a websocket group that goes quiet for
+            # a few seconds (e.g. Track History, which only gets a message
+            # when a sighting starts/ends) triggers a premature redis-py
+            # socket read timeout and kills the connection.
+            'hosts': [{'address': REDIS_URL, 'socket_timeout': 30}],
         },
     },
 }

@@ -17,3 +17,22 @@ class SessionFeedConsumer(AsyncJsonWebsocketConsumer):
 
     async def frame_message(self, event):
         await self.send_json(event['payload'])
+
+
+class TargetHistoryConsumer(AsyncJsonWebsocketConsumer):
+    """One websocket per tracked target_id, so the Track History page gets
+    live updates (a sighting starting/ending) while the person is still
+    being watched in the background - see streaming/playback.py, which
+    broadcasts to this same group whenever it opens or closes a Sighting."""
+
+    async def connect(self):
+        self.target_id = self.scope['url_route']['kwargs']['target_id']
+        self.group_name = f'target_history_{self.target_id}'
+        await self.channel_layer.group_add(self.group_name, self.channel_name)
+        await self.accept()
+
+    async def disconnect(self, code):
+        await self.channel_layer.group_discard(self.group_name, self.channel_name)
+
+    async def sighting_update(self, event):
+        await self.send_json(event['payload'])

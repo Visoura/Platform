@@ -3,6 +3,7 @@ import { Root } from './pages/root';
 import { Home } from './pages/home';
 import { SessionSetup } from './pages/session-setup';
 import { Dashboard } from './pages/dashboard';
+import { TrackHistory } from './pages/track-history';
 
 export const router = createBrowserRouter([
   {
@@ -12,6 +13,7 @@ export const router = createBrowserRouter([
       { index: true, Component: Home },
       { path: 'session/new', Component: SessionSetup },
       { path: 'session/:sessionId', Component: Dashboard },
+      { path: 'session/:sessionId/history/:targetId', Component: TrackHistory },
     ],
   },
 ]);

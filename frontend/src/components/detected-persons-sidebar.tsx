@@ -1,8 +1,8 @@
 import { ScrollArea } from './ui/scroll-area';
 import { User } from 'lucide-react';
 
-interface DetectedPerson {
-  id: number;
+export interface DetectedPerson {
+  targetId: string;
   cameraId: number;
   lastSeen: string;
   isVisible: boolean;
@@ -51,7 +51,7 @@ export function DetectedPersonsSidebar({
           ) : (
             visiblePersons.map((person) => (
               <button
-                key={person.id}
+                key={person.targetId}
                 onClick={() => onPersonSelect(person)}
                 className="w-full bg-[#0D1220] hover:bg-[#0B0F19] border border-[#3B82F6]/10 hover:border-[#3B82F6]/40 rounded-lg p-3 transition-all hover:shadow-[0_0_14px_rgba(59,130,246,0.18)] text-left group"
               >
@@ -70,7 +70,7 @@ export function DetectedPersonsSidebar({
                   {/* Info */}
                   <div className="flex-1 min-w-0">
                     <div className="text-xs text-[#E5E7EB] truncate" style={{ fontWeight: 500 }}>
-                      Person #{person.id}
+                      Person #{person.targetId.slice(0, 8)}
                     </div>
                     <div className="text-[10px] text-[#475569] mt-0.5 truncate">
                       Camera {person.cameraId}

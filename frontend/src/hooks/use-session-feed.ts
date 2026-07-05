@@ -7,6 +7,9 @@ export interface FeedBox {
   matched: boolean;
   target_id?: string;
   score?: number;
+  /** 'image_search' if this target was tracked via a photo upload rather
+   * than a click; used to fire a first-sighting notification. */
+  source?: string | null;
 }
 
 export interface FrameMessage {
