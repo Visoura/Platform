@@ -1,15 +1,15 @@
-import time
-
-from django.conf import settings
 from django.utils import timezone
 from rest_framework import mixins, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
-from streaming.producer import start_session_producers, stop_session_producers
+from streaming.playback import start_session_producers, stop_session_producers
+from tracking.vector_storage import VectorStorage
 
 from .models import MonitoringSession
 from .serializers import MonitoringSessionSerializer
+
+_tracking_storage = VectorStorage()
 
 
 class MonitoringSessionViewSet(
@@ -32,15 +32,15 @@ class MonitoringSessionViewSet(
         serializer.is_valid(raise_exception=True)
         session = serializer.save()
 
-        # Start pushing this session's camera frames into Kafka (queue1)
-        # straight away, in background threads, so the pipeline is already
-        # warm by the time we respond.
-        start_session_producers(session)
+        # Tracking is global (see tracking/vector_storage.py), not scoped to
+        # a session - clear it on every new session start so you never begin
+        # watching with stale tracked people left over from a previous run.
+        _tracking_storage.clear()
 
-        # Hold the response for a few seconds while frames flow through the
-        # GPU consumer into queue2, so a small buffer is already available
-        # once the frontend opens its websocket right after this returns.
-        time.sleep(settings.SESSION_START_DELAY_SECONDS)
+        # Frames+detections are already sitting on disk (see
+        # streaming/preprocessing.py) - playback threads can start streaming
+        # them to the websocket group immediately, no warm-up delay needed.
+        start_session_producers(session)
 
         out = self.get_serializer(session)
         return Response(out.data, status=201)

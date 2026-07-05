@@ -3,6 +3,7 @@ from rest_framework import serializers
 
 from cameras.models import Camera
 from cameras.serializers import CameraSerializer
+from streaming.preprocessing import load_meta
 
 from .models import MonitoringSession
 
@@ -24,5 +25,11 @@ class MonitoringSessionSerializer(serializers.ModelSerializer):
         if len(cameras) > settings.SESSION_MAX_CAMERAS:
             raise serializers.ValidationError(
                 f'A session supports at most {settings.SESSION_MAX_CAMERAS} cameras.'
+            )
+        not_preprocessed = [c.name for c in cameras if load_meta(c.id) is None]
+        if not_preprocessed:
+            raise serializers.ValidationError(
+                f'These cameras need preprocessing before a session can start: '
+                f'{", ".join(not_preprocessed)}. POST /api/cameras/{{id}}/preprocess/ first.'
             )
         return cameras

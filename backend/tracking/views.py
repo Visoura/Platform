@@ -1,26 +1,15 @@
-import base64
 import uuid
 
-import cv2
-import numpy as np
 from django.core.cache import cache
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
-from streaming.ai_client import call_ai_batch
+from streaming.preprocessing import load_detections, load_meta
 
 from .vector_storage import VectorStorage
 
 _storage = VectorStorage()
 CANDIDATES_CACHE_TIMEOUT = 60
-
-
-def _decode_frame(frame_b64: str):
-    if ',' in frame_b64:
-        frame_b64 = frame_b64.split(',')[-1]
-    img_bytes = base64.b64decode(frame_b64)
-    np_img = np.frombuffer(img_bytes, np.uint8)
-    return cv2.imdecode(np_img, cv2.IMREAD_COLOR)
 
 
 def _bbox_contains(bbox, px, py):
@@ -37,26 +26,27 @@ def _track_embedding(embedding) -> str:
 @api_view(['POST'])
 def start_tracking(request):
     """
-    body: {camera_id, frame: "<base64 jpg>", x: 0..1, y: 0..1}
+    body: {camera_id, frame_seq, x: 0..1, y: 0..1}
     x/y are the clicked point as a fraction of the frame's width/height.
+    Looks up the detections already computed for this exact frame during
+    preprocessing (streaming/preprocessing.py) - no AI service call here,
+    click-to-track is instant and works entirely off precomputed data.
     """
     data = request.data
-    frame_b64 = data.get('frame')
+    camera_id = data.get('camera_id')
+    frame_seq = data.get('frame_seq')
     x_frac = data.get('x')
     y_frac = data.get('y')
 
-    if not frame_b64 or x_frac is None or y_frac is None:
-        return Response({'error': 'frame, x and y are required'}, status=400)
+    if camera_id is None or frame_seq is None or x_frac is None or y_frac is None:
+        return Response({'error': 'camera_id, frame_seq, x and y are required'}, status=400)
 
-    frame = _decode_frame(frame_b64)
-    if frame is None:
-        return Response({'error': 'Could not decode frame'}, status=400)
+    meta = load_meta(camera_id)
+    if meta is None:
+        return Response({'error': 'This camera has not been preprocessed'}, status=400)
 
-    h, w = frame.shape[:2]
-    px, py = float(x_frac) * w, float(y_frac) * h
-
-    results = call_ai_batch([frame_b64])
-    detections = results[0] if results else []
+    detections = load_detections(camera_id).get(int(frame_seq), [])
+    px, py = float(x_frac) * meta['width'], float(y_frac) * meta['height']
 
     candidates = [d for d in detections if _bbox_contains(d['bbox'], px, py)]
 
@@ -106,6 +96,18 @@ def confirm_tracking(request):
 def clear_tracking(request):
     _storage.clear()
     return Response({'status': 'cleared'})
+
+
+@api_view(['POST'])
+def untrack_target(request):
+    """body: {target_id} - stops tracking one specific person, leaving any
+    other currently-tracked people untouched."""
+    target_id = request.data.get('target_id')
+    if not target_id:
+        return Response({'error': 'target_id is required'}, status=400)
+
+    _storage.delete(target_id)
+    return Response({'status': 'untracked'})
 
 
 @api_view(['GET'])

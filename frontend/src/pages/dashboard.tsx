@@ -33,7 +33,7 @@ export function Dashboard() {
     if (!loading && !session) navigate('/');
   }, [loading, session, navigate]);
 
-  const { framesByCamera } = useSessionFeed(session?.id);
+  const { store: feedStore } = useSessionFeed(session?.id);
 
   // ── Session elapsed timer ─────────────────────────────────────────────
   const [sessionElapsed, setSessionElapsed] = useState(0);
@@ -57,9 +57,9 @@ export function Dashboard() {
   }, [feedback]);
 
   const handleTrackClick = useCallback(
-    async (cameraId: number, frameBase64: string, xFrac: number, yFrac: number) => {
+    async (cameraId: number, frameSeq: number, xFrac: number, yFrac: number) => {
       try {
-        const res = await api.startTracking({ camera_id: cameraId, frame: frameBase64, x: xFrac, y: yFrac });
+        const res = await api.startTracking({ camera_id: cameraId, frame_seq: frameSeq, x: xFrac, y: yFrac });
         if (res.status === 'tracked') {
           setFeedback('Target added to tracking');
         } else if (res.status === 'no_detection') {
@@ -88,6 +88,15 @@ export function Dashboard() {
     },
     [pending]
   );
+
+  const handleUntrackClick = useCallback(async (targetId: string) => {
+    try {
+      await api.untrackTarget({ target_id: targetId });
+      setFeedback('Target untracked');
+    } catch {
+      setFeedback('Untrack request failed');
+    }
+  }, []);
 
   // ── Session controls ──────────────────────────────────────────────────
   const [showTerminateModal, setShowTerminateModal] = useState(false);
@@ -189,8 +198,9 @@ export function Dashboard() {
                       cameraName={camera.name}
                       isSelected={selectedCamera === camera.id}
                       onSelect={() => setSelectedCamera(camera.id)}
-                      frameMessage={framesByCamera[camera.id]}
+                      feedStore={feedStore}
                       onTrackClick={handleTrackClick}
+                      onUntrackClick={handleUntrackClick}
                       pendingCandidates={pending?.cameraId === camera.id ? pending.candidates : null}
                       onPickCandidate={pending?.cameraId === camera.id ? handlePickCandidate : undefined}
                     />

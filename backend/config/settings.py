@@ -113,12 +113,6 @@ CACHES = {
     }
 }
 
-# ── Kafka ──────────────────────────────────────────────────────────────────
-KAFKA_BOOTSTRAP_SERVERS = os.environ.get('KAFKA_BOOTSTRAP_SERVERS', 'kafka:9092')
-KAFKA_TOPIC_FRAMES_RAW = os.environ.get('KAFKA_TOPIC_FRAMES_RAW', 'frames.raw')
-KAFKA_TOPIC_FRAMES_PROCESSED = os.environ.get('KAFKA_TOPIC_FRAMES_PROCESSED', 'frames.processed')
-KAFKA_TOPIC_PARTITIONS = int(os.environ.get('KAFKA_TOPIC_PARTITIONS', '4'))
-
 # ── Qdrant / tracking ────────────────────────────────────────────────────────
 QDRANT_HOST = os.environ.get('QDRANT_HOST', 'qdrant')
 QDRANT_PORT = int(os.environ.get('QDRANT_PORT', '6333'))
@@ -126,17 +120,20 @@ QDRANT_VECTOR_SIZE = int(os.environ.get('QDRANT_VECTOR_SIZE', '384'))
 TRACKING_MATCH_THRESHOLD = float(os.environ.get('TRACKING_MATCH_THRESHOLD', '0.75'))
 
 # ── AI vision-pipeline service (external) ───────────────────────────────────
+# Only ever called by the preprocess_camera management command now - live
+# sessions replay precomputed results, they never call the AI service.
 AI_SERVICE_URL = os.environ.get('AI_SERVICE_URL', 'http://host.docker.internal:3000')
 AI_SERVICE_TIMEOUT = float(os.environ.get('AI_SERVICE_TIMEOUT', '25'))
 
-# ── Session / pipeline tuning ────────────────────────────────────────────────
+# ── Session tuning ───────────────────────────────────────────────────────────
 SESSION_MAX_CAMERAS = int(os.environ.get('SESSION_MAX_CAMERAS', '4'))
-SESSION_START_DELAY_SECONDS = float(os.environ.get('SESSION_START_DELAY_SECONDS', '5'))
-PRODUCER_TARGET_FPS = float(os.environ.get('PRODUCER_TARGET_FPS', '10'))
-PRODUCER_BATCH_SIZE = int(os.environ.get('PRODUCER_BATCH_SIZE', '4'))
-PRODUCER_FRAME_SIZE = (
-    int(os.environ.get('PRODUCER_FRAME_WIDTH', '640')),
-    int(os.environ.get('PRODUCER_FRAME_HEIGHT', '360')),
+
+# ── Preprocessing (offline detection+embedding extraction) ──────────────────
+# Every frame of the source video is processed - no sampling, no duration
+# cap (see streaming/preprocessing.py). Source videos are expected to
+# already be trimmed to a reasonable length before preprocessing.
+PREPROCESS_BATCH_SIZE = int(os.environ.get('PREPROCESS_BATCH_SIZE', '16'))
+PREPROCESS_FRAME_SIZE = (
+    int(os.environ.get('PREPROCESS_FRAME_WIDTH', '640')),
+    int(os.environ.get('PREPROCESS_FRAME_HEIGHT', '360')),
 )
-GPU_CONSUMER_BATCH_SIZE = int(os.environ.get('GPU_CONSUMER_BATCH_SIZE', '8'))
-GPU_CONSUMER_POLL_TIMEOUT = float(os.environ.get('GPU_CONSUMER_POLL_TIMEOUT', '0.5'))

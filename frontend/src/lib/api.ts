@@ -10,6 +10,13 @@ export interface ApiCamera {
   created_at: string;
 }
 
+export interface PreprocessStatus {
+  status: 'not_started' | 'processing' | 'done' | 'failed';
+  frames_done?: number;
+  total_frames?: number;
+  error?: string;
+}
+
 export interface ApiSession {
   id: string;
   cameras_detail: ApiCamera[];
@@ -44,6 +51,10 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
 
 export const api = {
   listCameras: () => request<ApiCamera[]>('/api/cameras/'),
+  preprocessCamera: (id: number) =>
+    request<{ status: string }>(`/api/cameras/${id}/preprocess/`, { method: 'POST' }),
+  preprocessStatus: (id: number) =>
+    request<PreprocessStatus>(`/api/cameras/${id}/preprocess-status/`),
   listSessions: () => request<ApiSession[]>('/api/sessions/'),
   createSession: (cameraIds: number[]) =>
     request<ApiSession>('/api/sessions/', {
@@ -52,7 +63,7 @@ export const api = {
     }),
   terminateSession: (id: string) =>
     request<{ status: string }>(`/api/sessions/${id}/terminate/`, { method: 'POST' }),
-  startTracking: (body: { camera_id: number; frame: string; x: number; y: number }) =>
+  startTracking: (body: { camera_id: number; frame_seq: number; x: number; y: number }) =>
     request<TrackingStartResponse>('/api/tracking/start/', {
       method: 'POST',
       body: JSON.stringify(body),
@@ -63,6 +74,11 @@ export const api = {
       body: JSON.stringify(body),
     }),
   clearTracking: () => request<{ status: string }>('/api/tracking/clear/', { method: 'DELETE' }),
+  untrackTarget: (body: { target_id: string }) =>
+    request<{ status: string }>('/api/tracking/untrack/', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
   trackingStatus: () =>
     request<{ tracking_enabled: boolean; count: number }>('/api/tracking/status/'),
 };
