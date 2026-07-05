@@ -8,6 +8,7 @@ import { SearchNotification } from '../components/search-notification';
 import { NotificationsPanel } from '../components/notifications-panel';
 import type { SearchRecord } from '../components/notifications-panel';
 import { TerminateModal } from '../components/terminate-modal';
+import { SearchConfirmModal } from '../components/search-confirm-modal';
 import { useSessionContext } from '../context/session-context';
 import { useSessionFeed, useCameraFrame } from '../hooks/use-session-feed';
 import type { FeedStore, FeedBox } from '../hooks/use-session-feed';
@@ -221,6 +222,7 @@ export function Dashboard() {
   const [showNotifications, setShowNotifications] = useState(false);
   const [notifications, setNotifications] = useState<SearchRecord[]>([]);
   const [popupNotification, setPopupNotification] = useState<SearchRecord | null>(null);
+  const [pendingImage, setPendingImage] = useState<{ file: File; url: string } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const seenTargetIds = useRef<Set<string>>(new Set());
 
@@ -281,10 +283,16 @@ export function Dashboard() {
     const reader = new FileReader();
     reader.onload = (ev) => {
       const url = ev.target?.result as string;
-      if (url) runSearch(file, url);
+      if (url) setPendingImage({ file, url });
     };
     reader.readAsDataURL(file);
     e.target.value = '';
+  };
+
+  const handleConfirmSearch = () => {
+    if (!pendingImage) return;
+    runSearch(pendingImage.file, pendingImage.url);
+    setPendingImage(null);
   };
 
   // ── Session controls ──────────────────────────────────────────────────
@@ -548,6 +556,15 @@ export function Dashboard() {
       {pageCameras.map((camera) => (
         <BoxWatcher key={camera.id} cameraId={camera.id} feedStore={feedStore} onBoxes={handleBoxes} />
       ))}
+
+      {/* ── Search Confirm Modal ──────────────────────────────────────────── */}
+      {pendingImage && (
+        <SearchConfirmModal
+          imageUrl={pendingImage.url}
+          onConfirm={handleConfirmSearch}
+          onCancel={() => setPendingImage(null)}
+        />
+      )}
 
       {/* ── Terminate Modal ──────────────────────────────────────────────── */}
       {showTerminateModal && (
