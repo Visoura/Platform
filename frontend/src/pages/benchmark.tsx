@@ -48,6 +48,8 @@ export function BenchmarkPage({ state }: { state: EngineState }) {
             mode
             <select value={mode} onChange={(e) => setMode(e.target.value)} className="rounded border border-[var(--border)] bg-[var(--surface-2)] px-2 py-1 text-sm text-[var(--ink)]">
               <option value="ladder">ladder: baseline, then one optimization at a time</option>
+              <option value="isolated">isolated: each optimization alone on the baseline</option>
+              <option value="leave_one_out">leave-one-out: everything on, minus one at a time</option>
               <option value="current">current flags only</option>
             </select>
           </label>

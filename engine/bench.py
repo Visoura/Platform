@@ -76,10 +76,49 @@ def ladder_steps(caps):
     return steps
 
 
+DEPENDS = {
+    "embed_per_track": {"tracker": True, "inference_transport": "inprocess"},
+    "quality_gate": {"inference_transport": "inprocess"},
+}
+
+
+def isolated_steps(caps):
+    base = normalize(Flags(), caps)
+    steps = [("baseline", {}, base, False)]
+    for name, change in LADDER[1:]:
+        flags = normalize(replace(Flags(), **{**DEPENDS.get(name, {}), **change}), caps)
+        steps.append((name, change, flags, flags == base))
+    steps.append(("baseline (repeat)", {}, base, False))
+    return steps
+
+
+def leave_one_out_steps(caps):
+    full = Flags()
+    for _, change in LADDER:
+        full = replace(full, **change)
+    full = normalize(full, caps)
+    steps = [("all", {}, full, False)]
+    before = Flags()
+    for i, (name, change) in enumerate(LADDER[1:], start=1):
+        overridden = any(key in later for _, later in LADDER[i + 1:] for key in change)
+        revert = {key: getattr(before, key) for key in change}
+        before = replace(before, **change)
+        if overridden:
+            continue
+        flags = normalize(replace(full, **revert), caps)
+        steps.append((f"without {name}", revert, flags, flags == full))
+    steps.append(("all (repeat)", {}, full, False))
+    return steps
+
+
 def run(mode, cameras, targets, frames_per_camera, current_flags, on_progress=lambda *a: None, should_stop=lambda: False):
     caps = capabilities.detect()
     if mode == "ladder":
         steps = ladder_steps(caps)
+    elif mode == "isolated":
+        steps = isolated_steps(caps)
+    elif mode == "leave_one_out":
+        steps = leave_one_out_steps(caps)
     else:
         steps = [("current", {}, normalize(current_flags, caps), False)]
     results = []
@@ -141,7 +180,8 @@ def main():
     from .targets import TargetStore
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("--ladder", action="store_true")
+    parser.add_argument("--mode", default="current", choices=["current", "ladder", "isolated", "leave_one_out"])
+    parser.add_argument("--ladder", action="store_true", help="same as --mode ladder")
     parser.add_argument("--frames", type=int, default=300)
     parser.add_argument("--cameras", type=int, default=0)
     args = parser.parse_args()
@@ -153,7 +193,7 @@ def main():
     targets = TargetStore()
     targets.load_watchlist(LocalModels(replace(Flags(), inference_transport="inprocess")))
     flags = normalize(Flags(), capabilities.detect())
-    report = run("ladder" if args.ladder else "current", cameras, targets, args.frames, flags,
+    report = run("ladder" if args.ladder else args.mode, cameras, targets, args.frames, flags,
                  on_progress=lambda i, n, name: print(f"[{i + 1}/{n}] {name}", flush=True))
     print_report(report)
 
