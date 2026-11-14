@@ -1,118 +1,161 @@
-export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000';
-export const WS_BASE_URL =
-  import.meta.env.VITE_WS_BASE_URL ?? API_BASE_URL.replace(/^http/, 'ws');
+export const API_URL = import.meta.env.VITE_API_URL ?? `http://${location.hostname}:8000`;
+export const WEBRTC_URL = import.meta.env.VITE_WEBRTC_URL ?? `http://${location.hostname}:8889`;
+export const WS_URL = API_URL.replace(/^http/, 'ws') + '/ws';
 
-export interface ApiCamera {
-  id: number;
-  name: string;
-  file_path: string;
-  is_active: boolean;
-  created_at: string;
-}
+export type Flags = Record<string, boolean | number | string>;
 
-export interface PreprocessStatus {
-  status: 'not_started' | 'processing' | 'done' | 'failed';
-  frames_done?: number;
-  total_frames?: number;
-  error?: string;
-}
-
-export interface ApiSession {
+export interface Camera {
   id: string;
-  cameras_detail: ApiCamera[];
-  status: 'active' | 'terminated';
-  created_at: string;
-  ended_at: string | null;
+  fps: number;
+  width: number;
+  height: number;
+  webrtc_path: string;
 }
 
-export interface TrackingCandidate {
+export interface FlagInfo {
+  group: string;
+  name: string;
+  label: string;
+  help: string;
+  kind: 'bool' | 'select' | 'number';
+  options: (string | number)[] | null;
+  unavailable: string | null;
+}
+
+export interface EngineState {
+  status: 'starting' | 'running' | 'stopped' | 'error' | 'benchmarking';
+  error: string | null;
+  cameras: Camera[];
+  flags: Flags;
+  schema: FlagInfo[];
+  capabilities: { device: string; gpu: string; hwaccel: string | null; compiler: string | null; qdrant: boolean };
+  bench_running: boolean;
+}
+
+export interface Summary {
+  p50: number;
+  p95: number;
+  mean: number;
+  n: number;
+}
+
+export interface Metrics {
+  uptime: number;
+  stages: Record<string, Summary>;
+  totals: Record<string, number>;
+  rates: Record<string, number>;
+  latency: Summary;
+  system: { cpu_percent?: number; rss_mb?: number; cores?: number; gpu_util?: number | null; gpu_mem_mb?: number | null };
+  ws_bytes_sent: number;
+  ws_dropped: number;
+  ws_clients: number;
+}
+
+export interface Target {
+  id: string;
+  name: string;
+  source: 'watchlist' | 'click';
+  thumb: string;
+}
+
+export interface Candidate {
   index: number;
-  bbox: [number, number, number, number];
-  confidence: number;
+  box: [number, number, number, number];
+  thumb: string;
+  target: string | null;
+  name: string | null;
 }
 
-export type TrackingPreviewResponse =
-  | { status: 'no_detection' }
-  | { status: 'preview'; token: string; candidates: TrackingCandidate[] };
+export type ClickResult =
+  | { status: 'ok'; token: string; candidates: Candidate[] }
+  | { status: 'no_detection' | 'no_frame' };
 
 export interface Sighting {
-  camera_id: number;
-  camera_name: string;
-  started_at: string;
-  ended_at: string | null;
-  duration_sec: number | null;
+  camera: string;
+  started_at: number;
+  ended_at: number | null;
 }
 
-export interface SearchByImageTarget {
-  target_id: string;
-  bbox: [number, number, number, number];
-  confidence: number;
+export interface BenchResult {
+  step: string;
+  change: Flags;
+  skipped: boolean;
+  flags?: Flags;
+  speedup?: number;
+  elapsed?: number;
+  throughput_fps?: number;
+  analyzed_fps?: number;
+  realtime_cameras?: number;
+  stage_ms_per_frame?: Record<string, number>;
+  cpu_percent?: number;
+  rss_mb?: number;
+  gpu_mem_mb?: number | null;
+  detections_per_frame?: number;
+  embeddings_per_frame?: number;
+  matches_per_frame?: number;
+  kb_out_per_frame?: number;
+  db_commits?: number;
 }
 
-export type SearchByImageResponse =
-  | { status: 'found'; targets: SearchByImageTarget[] }
-  | { status: 'no_person_detected'; targets: [] };
+export interface BenchReport {
+  id: string;
+  mode: string;
+  frames_per_camera: number;
+  cameras: string[];
+  device: string;
+  gpu: string;
+  results: BenchResult[];
+}
 
-async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
-  const res = await fetch(`${API_BASE_URL}${path}`, {
-    headers: { 'Content-Type': 'application/json', ...(options.headers ?? {}) },
-    ...options,
-  });
-  if (!res.ok) {
-    const body = await res.text().catch(() => '');
-    throw new Error(`${res.status} ${res.statusText}: ${body}`);
-  }
-  if (res.status === 204) return undefined as T;
+export interface BenchState {
+  running: boolean;
+  step: string | null;
+  index: number;
+  total: number;
+  report: BenchReport | null;
+  error: string | null;
+}
+
+export interface ReportInfo {
+  id: string;
+  mode: string;
+  device: string;
+  cameras: number;
+  frames_per_camera: number;
+}
+
+async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const res = await fetch(API_URL + path, init);
+  if (!res.ok) throw new Error(`${res.status}: ${await res.text()}`);
   return res.json();
 }
 
+const json = (method: string, body: unknown): RequestInit => ({
+  method,
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify(body),
+});
+
 export const api = {
-  listCameras: () => request<ApiCamera[]>('/api/cameras/'),
-  preprocessCamera: (id: number) =>
-    request<{ status: string }>(`/api/cameras/${id}/preprocess/`, { method: 'POST' }),
-  preprocessStatus: (id: number) =>
-    request<PreprocessStatus>(`/api/cameras/${id}/preprocess-status/`),
-  listSessions: () => request<ApiSession[]>('/api/sessions/'),
-  createSession: (cameraIds: number[]) =>
-    request<ApiSession>('/api/sessions/', {
-      method: 'POST',
-      body: JSON.stringify({ cameras: cameraIds }),
-    }),
-  terminateSession: (id: string) =>
-    request<{ status: string }>(`/api/sessions/${id}/terminate/`, { method: 'POST' }),
-  previewTracking: (body: { camera_id: number; frame_seq: number; x: number; y: number }) =>
-    request<TrackingPreviewResponse>('/api/tracking/preview/', {
-      method: 'POST',
-      body: JSON.stringify(body),
-    }),
-  confirmTracking: (body: { token: string; index: number }) =>
-    request<{ status: string; target_id?: string }>('/api/tracking/confirm/', {
-      method: 'POST',
-      body: JSON.stringify(body),
-    }),
-  clearTracking: () => request<{ status: string }>('/api/tracking/clear/', { method: 'DELETE' }),
-  untrackTarget: (body: { target_id: string }) =>
-    request<{ status: string }>('/api/tracking/untrack/', {
-      method: 'POST',
-      body: JSON.stringify(body),
-    }),
-  trackingStatus: () =>
-    request<{ tracking_enabled: boolean; count: number }>('/api/tracking/status/'),
-  getTrackHistory: (targetId: string) =>
-    request<Sighting[]>(`/api/tracking/${targetId}/history/`),
-  // Not using the shared request() helper - it forces Content-Type:
-  // application/json, which would break the multipart boundary.
-  searchByImage: async (file: File): Promise<SearchByImageResponse> => {
+  state: () => request<EngineState>('/api/state'),
+  applyFlags: (flags: Flags) => request<EngineState>('/api/flags', json('PUT', flags)),
+  metrics: () => request<Metrics>('/api/metrics'),
+  click: (camera: string, index: number, x: number, y: number) =>
+    request<ClickResult>('/api/click', json('POST', { camera, index, x, y })),
+  track: (token: string, index: number, name?: string) =>
+    request<Target>('/api/targets', json('POST', { token, index, name })),
+  targets: () => request<Target[]>('/api/targets'),
+  untrack: (id: string) => request<unknown>(`/api/targets/${id}`, { method: 'DELETE' }),
+  history: (id: string) => request<Sighting[]>(`/api/targets/${id}/history`),
+  uploadPhoto: (file: File, name: string) => {
     const form = new FormData();
     form.append('image', file);
-    const res = await fetch(`${API_BASE_URL}/api/tracking/search-by-image/`, {
-      method: 'POST',
-      body: form,
-    });
-    if (!res.ok) {
-      const body = await res.text().catch(() => '');
-      throw new Error(`${res.status} ${res.statusText}: ${body}`);
-    }
-    return res.json();
+    form.append('name', name);
+    return request<Target>('/api/targets/photo', { method: 'POST', body: form });
   },
+  startBench: (mode: string, frames: number) => request<BenchState>('/api/bench', json('POST', { mode, frames })),
+  bench: () => request<BenchState>('/api/bench'),
+  cancelBench: () => request<BenchState>('/api/bench/cancel', { method: 'POST' }),
+  reports: () => request<ReportInfo[]>('/api/bench/reports'),
+  report: (id: string) => request<BenchReport>(`/api/bench/reports/${id}`),
 };
