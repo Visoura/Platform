@@ -16,8 +16,11 @@ and measure.
    implementation from the flags, and the six stage methods (`grab`, `detect`, `track`, `embed`,
    `match`, `publish`) contain the remaining branches.
 4. **Benchmark → ladder** turns the flags on one at a time, cumulatively, in the order of
-   [engine/flags.py](engine/flags.py) `LADDER`. Each bar shows what that one step added on
-   top of everything before it.
+   [engine/flags.py](engine/flags.py) `LADDER`. Each bar is the total speedup over the baseline
+   so far. Divide it by the previous bar to get what that one step added.
+5. **Benchmark → isolated** turns on one optimization at a time on top of the baseline.
+   **Benchmark → leave_one_out** starts from everything on and turns one off at a time. Together
+   they show whether optimizations add up or get in each other's way.
 
 How to read the benchmark columns:
 
@@ -67,14 +70,17 @@ How to read it:
   - `analysis_fps`: analyze 1 frame in 6.
 - **The "make each call faster" steps add up to about 2×:** `fp16`, `vectorized_boxes`,
   `gpu_crops`, the transport steps.
-- **Some steps don't pay off on this Mac:**
-  - `compiled_detector`: CoreML runs one image at a time.
+- **Some steps don't pay off at their place in the ladder on this Mac:**
+  - `compiled_detector`: CoreML runs one image at a time. In the final system it ends up
+    1.09× faster, though.
   - `hw_decode`: the pipe copy costs more than the decode.
-  - `motion_gate`: these scenes are busy.
-  - `pipelined`: after `analysis_fps`, decoding the skipped frames dominates, so there's
-    little left to overlap.
+  - `motion_gate`: at 10 fps, frames differ too much for it to skip.
 
   Each one is explained below. Not every textbook optimization wins everywhere, so measure.
+- **The ladder only shows each step on top of the ones before it.** For each optimization on
+  its own, and what the finished system loses without it, see
+  [reports/optimization_report.pdf](reports/optimization_report.pdf), or run the `isolated`
+  and `leave_one_out` benchmark modes.
 - **Two steps don't show up in fps but matter live:** `webrtc` (KB per frame to the browser
   drops from 259 to 1, and the video plays at full fps) and `batched_db_writes` (36 commits
   become 2).
@@ -136,8 +142,14 @@ Read: [engine/ingest/motion_gate.py](engine/ingest/motion_gate.py)
 - **What it does:** shrinks each frame to 64×36 grayscale and compares it with the frame at
   the last detection. If almost nothing changed, the detector is skipped and the previous
   result is reused. It still forces a detection every 2 s.
-- **Where it pays off:** most real cameras look at empty corridors most of the day. On busy
-  test videos it rarely triggers, which is itself worth seeing. Watch *detector skipped / s*.
+- **Where it pays off:** most real cameras look at empty corridors most of the day.
+- **It depends on the frame rate:**
+  - **At full frame rate**, frames 16 ms apart barely differ, so on these videos it skips about
+    half the detections (1.78× alone in the isolated benchmark).
+  - **At `analysis_fps` 10**, frames are 100 ms apart and differ more, so on these busy scenes it
+    rarely triggers and adds nothing (0.98× in the final system).
+
+  Watch *detector skipped / s*.
 
 ## Inference transport
 
@@ -324,7 +336,7 @@ Read: [engine/pipeline/runners.py](engine/pipeline/runners.py)
 - **Why the queues are bounded:** a full queue makes the stage before it wait, so a slow stage
   slows the producer instead of piling up memory.
 - **The gain is largest when stages are similar in size.** When one stage dominates, overlap
-  can only hide the smaller ones.
+  can only hide the smaller ones. Measured: 1.06× alone, 1.09× in the final system.
 
 ## What a bigger production system adds on top
 
