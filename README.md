@@ -37,6 +37,17 @@ compiled CoreML/TensorRT models.
 frame into `data/persons/`, which is handy for testing. The three `cam1_5s_*.jpg` files there now
 were made this way and can be deleted.
 
+## Start and stop
+
+```
+./run.sh          # Qdrant + engine + frontend in the background, then open http://localhost:5173
+./stop.sh         # stops the engine (and the MediaMTX cameras it started) and the frontend
+./stop.sh --all   # also stops the Qdrant container
+```
+
+Logs and PID files go to `data/run/`. The first start takes a couple of minutes while the videos
+are transcoded. Below is the one-time setup and what the scripts do by hand.
+
 ## Run it on a Mac (Apple Silicon)
 
 ```
