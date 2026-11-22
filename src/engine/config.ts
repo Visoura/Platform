@@ -1,0 +1,14 @@
+export const ANALYSIS_FPS = 10;
+export const GRAB_WIDTH = 640;
+export const DETECT_W = 640;
+export const DETECT_H = 384;
+export const DETECT_CONF = 0.4;
+export const NMS_IOU = 0.7;
+export const REID_W = 128;
+export const REID_H = 256;
+export const REID_DIM = 384;
+export const EMBED_EVERY_S = 0.5;
+export const MATCH_THRESHOLD = 0.8;
+export const HYSTERESIS = 0.1;
+export const SIGHTING_GRACE_S = 2;
+export const MAX_IN_FLIGHT = 2;

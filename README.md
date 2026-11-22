@@ -1,128 +1,105 @@
-# Visoura Platform
+# Visoura browser demo
 
-A small but complete multi-camera person re-identification system: live video from any
-number of cameras, detection + tracking + ReID embedding + matching against a watchlist,
-a live dashboard with click-to-track, and a benchmark.
-
-This branch (`local-engine`) runs only the fastest combination of optimizations, with no
-flags. [LEARN.md](LEARN.md) explains each piece, what it was worth, and what was dropped.
+Multi-camera person re-identification that runs entirely in the browser: YOLO11n detection,
+tracking, ReID embedding with our transformer model, and watchlist matching, all on the
+visitor's GPU through WebGPU. There's no server, so it can be hosted for free on GitHub Pages.
+Videos and photos a visitor opens never leave their machine.
 
 Branches:
 
 - `flags-lab`: every optimization as a flag, with the slow baseline next to it and the
   ladder, isolated and leave-one-out benchmarks.
-- `local-engine` (this one): the best combination, for real RTSP cameras on a Mac or an
-  NVIDIA machine.
-- `browser-demo`: the same pipeline running fully in the browser with WebGPU, for GitHub Pages.
+- `local-engine`: the fastest combination as a Python engine for real RTSP cameras on a Mac or
+  an NVIDIA machine.
+- `browser-demo` (this one): the same pipeline rewritten in TypeScript for the browser.
+
+[LEARN.md](LEARN.md) explains how the browser version works and how it maps to the Python engine.
+
+## What it needs
 
 ```
-data/videos/*.mp4 ─► MediaMTX (fake RTSP cameras: camN = main, camN_sub = 640px)
-                         │                              │
-                         │ RTSP                         │ WebRTC (video never touches Python)
-                         ▼                              ▼
-engine/  grab ─► detect ─► track ─► embed ─► match ─► publish ──ws──► frontend/
-  (one Python process, FastAPI)                                  (React: Live, Pipeline, Benchmark)
-data/persons/*.jpg ─► watchlist      data/sightings.db ◄─ sightings
+public/
+  models/detector.onnx    YOLO11n, person class only, fp16          (about 5 MB)
+  models/reid.onnx        the ReID transformer, fp16                (about 43 MB)
+  videos/*.mp4            optional sample cameras + manifest.json
+  persons/*.jpg           optional watchlist photos + manifest.json
 ```
 
-## What you provide
+All of it is generated from the same `data/` folder the Python branches use:
 
 ```
-data/
-  videos/     one video file per camera, any number (mp4/mkv/mov/avi/ts)
-  persons/    images of people to look for; the file name is the person's name.
-              Already-cropped people or full photos both work.
-  weights/    transformer_120.pth (ReID) and yolo11n.pt (detector)
-```
-
-`data/` is gitignored. Everything else is generated into `data/cache/` the first time you run:
-a B-frame-free copy of each video (WebRTC can't carry B-frames), a 640px sub-stream, and
-compiled CoreML/TensorRT models.
-
-`python -m engine.tools.extract_persons cam1.mp4 --at 5 --count 3` saves people from a video
-frame into `data/persons/`, which is handy for testing. The three `cam1_5s_*.jpg` files there now
-were made this way and can be deleted.
-
-## Start and stop
-
-```
-./run.sh          # engine + frontend in the background, then open http://localhost:5173
-./stop.sh         # stops the engine (and the MediaMTX cameras it started) and the frontend
-```
-
-Logs and PID files go to `data/run/`. The first start takes a couple of minutes while the videos
-are transcoded. Below is the one-time setup and what the scripts do by hand.
-
-## Run it on a Mac (Apple Silicon)
-
-```
-brew install ffmpeg mediamtx
 uv venv --python 3.12 .venv
-uv pip install --python .venv/bin/python -r requirements-mac.txt
-.venv/bin/python -m engine      # API on :8000, starts MediaMTX + the camera loops itself
-
-cd frontend && npm install && npm run dev    # http://localhost:5173
+uv pip install --python .venv/bin/python -r tools/requirements.txt
+.venv/bin/python tools/prepare_web.py               # models + 640px 30fps videos + persons
+.venv/bin/python tools/prepare_web.py --skip-media  # models only
 ```
 
-The first start transcodes the videos (about 2 minutes for four 2-minute 1080p60 clips) and
-then reuses the cache.
+The script exports both models to ONNX, keeps only the person outputs of the detector, and
+converts them to fp16. LEARN.md shows how the export was checked against PyTorch.
 
-**WebRTC on macOS:** this was tested in Chrome on the same Mac and works out of the box. If the
-tiles stay black (boxes still draw), the macOS application firewall
-is probably blocking the Homebrew `mediamtx` binary. Click "Allow" if macOS asks, or run:
+## Run it locally
 
 ```
-MTX=$(realpath $(which mediamtx))
-sudo /usr/libexec/ApplicationFirewall/socketfilterfw --add "$MTX"
-sudo /usr/libexec/ApplicationFirewall/socketfilterfw --unblockapp "$MTX"
+npm install
+npm run dev          # http://localhost:5173
 ```
 
-## Run it on an NVIDIA GPU (Linux)
+Use Chrome, Edge or Safari 26+ for WebGPU. Without it the page falls back to the CPU (WASM),
+which works but only analyzes a few frames per second.
 
-```
-sudo apt install ffmpeg
-# MediaMTX: download the linux_amd64 tarball from github.com/bluenviron/mediamtx/releases, put it on PATH
-uv venv --python 3.12 .venv
-uv pip install --python .venv/bin/python -r requirements-cuda.txt
-.venv/bin/python -m engine
-```
+**Open videos** on the Live page plays any local video files as cameras instead of the
+samples. **Search by photo** adds a watchlist person from an image.
 
-On CUDA the detector is compiled with TensorRT (built once into `data/cache/`, with a PyTorch
-fp16 fallback if that fails) and the GPU utilization tile is filled from NVML. The CUDA path
-is written but has not been run yet. Only the Mac path was tested.
+## Publish on GitHub Pages
 
-If the browser runs on another machine, point the frontend at the engine host in `frontend/.env`
-(`VITE_API_URL`, `VITE_WEBRTC_URL`).
+GitHub Pages is free for public repositories. An organization's private repository needs a
+paid plan.
 
-## Benchmark from the command line
+1. **Decide what to publish.** `public/models`, `public/videos` and `public/persons` are in
+   `.gitignore`, so nothing is published by accident. Anything in them becomes downloadable by
+   anyone:
+   - **The ReID weights are required.** Without the models the page shows an error.
+   - **Videos and photos are optional.** Visitors can open their own files. Only publish footage
+     you have the rights to share.
 
-```
-.venv/bin/python -m engine.bench --frames 300        # all cameras
-.venv/bin/python -m engine.bench --cameras 2         # first N cameras only
-```
+   ```
+   git add -f public/models                    # required
+   git add -f public/videos public/persons     # optional sample media
+   git commit -m "Add web models and sample media"
+   ```
 
-Reports are saved to `data/benchmarks/` and show up in the Benchmark page, so runs on different
-machines can be compared side by side.
+2. **Push the branch:** `git push origin browser-demo`.
+3. **Set the Pages source.** In the repository on GitHub, go to Settings → Pages → Source and
+   choose **GitHub Actions**.
+4. **Allow this branch to deploy.** Go to Settings → Environments → `github-pages` → Deployment
+   branches and add `browser-demo`. By default only the default branch may deploy.
+5. **Run the workflow.** [.github/workflows/pages.yml](.github/workflows/pages.yml) runs on every
+   push to `browser-demo`, or start it by hand from the Actions tab.
 
-Settings that can be overridden with environment variables: `ANALYSIS_FPS` (default 10),
-`MATCH_THRESHOLD` (0.8), `DEVICE` (cuda / mps / cpu), `RECORD=1` to record the main streams.
+The site is then at `https://<owner>.github.io/<repo>/`.
+
+Limits to keep in mind:
+
+- 100 MB per file in git, so the fp16 models fit.
+- About 1 GB per site.
+- A soft limit of about 100 GB of traffic a month. A first visit that loads the models, the
+  runtime and the sample videos is about 90 MB, so that's roughly a thousand first visits.
+  Returning visitors are served from the browser cache.
 
 ## Layout
 
 ```
-engine/
-  app.py, engine.py        HTTP + websocket API, pipeline lifecycle, clicks, benchmark runs
-  settings.py              paths, ports and the few tuning constants
-  pipeline/pipeline.py     the six stages
-  pipeline/runners.py      three threads joined by bounded queues
-  ingest/                  OpenCV RTSP reader, latest-frame wrapper, fps sampler
-  inference/               detector (+ CoreML/TensorRT export), ReID model, GPU crops
-  tracking/                ByteTrack wrapper, per-track embedding memory, quality gate
-  matcher.py               watchlist matching as one matrix multiply
-  sightings.py             batched SQLite writes
-  metrics.py, bench.py     stage timers, counters, system stats; benchmark runner
-frontend/src/
-  pages/                   live.tsx, pipeline.tsx, benchmark.tsx
-  lib/feed.ts              websocket feed, frame decoding, clock-synced latency
-  lib/whep.ts              WebRTC (WHEP) player
+src/engine/
+  engine.ts        main thread: videos, frame grabbing, in-flight limit, sightings, benchmark
+  worker.ts        Web Worker: receives frames, runs the pipeline, answers clicks and photos
+  pipeline.ts      detect → track → embed → match for one batch of camera frames
+  models.ts        ONNX Runtime Web sessions (WebGPU, WASM fallback), model download
+  preprocess.ts    letterbox and crop with OffscreenCanvas into planar float tensors
+  detect.ts        YOLO output decoding and NMS
+  tracker.ts       ByteTrack-style tracker
+  tracks.ts        per-track embedding memory, hysteresis, crop quality gate
+  targets.ts       watchlist and matching
+  metrics.ts, sightings.ts, config.ts, types.ts
+src/pages/         live.tsx, pipeline.tsx, benchmark.tsx
+tools/prepare_web.py   exports the models and media into public/
 ```
