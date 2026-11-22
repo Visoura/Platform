@@ -1,66 +1,50 @@
-import { useEffect, useRef, useState } from 'react';
-import { toast } from 'sonner';
+import { useEffect, useRef } from 'react';
 import { Card, HorizontalBars, StatTile, TimeLines } from '../components/charts';
-import { FlagControls } from '../components/flag-controls';
-import { api, type EngineState, type Flags } from '../lib/api';
+import type { EngineState } from '../lib/api';
 import { useMetrics } from '../lib/hooks';
 
 const STAGES = ['grab', 'detect', 'track', 'embed', 'match', 'publish'];
-const SUBSTAGES = ['serialize', 'remote_call', 'crop', 'reid', 'encode', 'db'];
+const SUBSTAGES = ['crop', 'reid'];
 
-export function PipelinePage({ state, onApplied }: { state: EngineState; onApplied: () => void }) {
-  const [draft, setDraft] = useState<Flags>(state.flags);
-  const [applying, setApplying] = useState(false);
+const DESIGN = [
+  ['grab', 'ingest/', 'Reads the 640px sub-stream over RTSP. A thread per camera keeps only the newest frame, and a sampler lets through {fps} frames per second.'],
+  ['detect', 'inference/detector.py', 'One YOLO11n call for every camera at once, person class only, fp16, compiled with {detector}.'],
+  ['track', 'tracking/tracker.py', 'ByteTrack gives each person a stable id, so the rest of the pipeline works per person instead of per box.'],
+  ['embed', 'inference/crops.py, reid.py', 'Only new tracks, and each track again every 0.5 s, are cropped on the GPU (roi_align) and embedded in fp16. Tiny or cut-off crops are skipped.'],
+  ['match', 'matcher.py', 'One matrix multiply against the watchlist in memory. A track keeps its identity with a small hysteresis margin.'],
+  ['publish', 'pipeline/pipeline.py', 'Sends only boxes as JSON. The browser plays the video itself over WebRTC from MediaMTX. Sightings go to SQLite in batches.'],
+];
+
+export function PipelinePage({ state }: { state: EngineState }) {
   const [metrics] = useMetrics();
   const history = useRef<Record<string, number>[]>([]);
-  const dirty = Object.keys(draft).some((k) => draft[k] !== state.flags[k]);
-
-  useEffect(() => {
-    if (!dirty) setDraft(state.flags);
-  }, [state.flags]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!metrics) return;
     history.current = [...history.current, { analyzed: metrics.rates.frames_analyzed ?? 0, decoded: metrics.rates.frames_decoded ?? 0 }].slice(-90);
   }, [metrics]);
 
-  const apply = async () => {
-    setApplying(true);
-    try {
-      const next = await api.applyFlags(draft);
-      setDraft(next.flags);
-      onApplied();
-      toast.success('Pipeline restarted with the new flags');
-    } catch (e) {
-      toast.error(String(e));
-    } finally {
-      setApplying(false);
-    }
-  };
-
   const rates = metrics?.rates ?? {};
   const stageData = STAGES.map((s) => ({ name: s, value: metrics?.stages[s]?.mean ?? 0 }));
   const timeline = history.current.map((p, i, all) => ({ t: i - all.length + 1, ...p }));
   const fmt = (v: number | undefined, d = 1) => (v ?? 0).toFixed(d);
+  const fill = (text: string) => text.replace('{fps}', String(state.config.analysis_fps)).replace('{detector}', state.config.detector);
 
   return (
-    <div className="grid gap-4 p-4 lg:grid-cols-[minmax(380px,460px)_1fr]">
-      <div>
-        <div className="sticky top-0 z-10 mb-3 flex items-center gap-2 bg-[var(--page)] py-2">
-          <button
-            onClick={apply}
-            disabled={!dirty || applying}
-            className="rounded-md bg-[var(--accent)] px-3 py-1.5 text-sm font-medium text-white disabled:opacity-40"
-          >
-            {applying ? 'Restarting…' : 'Apply & restart'}
-          </button>
-          <button onClick={() => setDraft(state.flags)} disabled={!dirty} className="rounded-md px-3 py-1.5 text-sm text-[var(--ink-2)] disabled:opacity-40">
-            Reset
-          </button>
-          <span className="ml-auto text-xs text-[var(--muted)]">all off = today's baseline</span>
-        </div>
-        <FlagControls schema={state.schema} draft={draft} applied={state.flags} onChange={(n, v) => setDraft({ ...draft, [n]: v })} />
-      </div>
+    <div className="grid gap-4 p-4 lg:grid-cols-[minmax(340px,420px)_1fr]">
+      <Card title="How this pipeline works" subtitle="Three threads (grab → models → publish) connected by small queues, so decoding, inference and output overlap.">
+        <ol className="space-y-3">
+          {DESIGN.map(([stage, file, text]) => (
+            <li key={stage} className="text-xs">
+              <div className="flex items-baseline justify-between gap-2">
+                <span className="text-sm font-medium">{stage}</span>
+                <code className="text-[11px] text-[var(--muted)]">engine/{file}</code>
+              </div>
+              <p className="text-[var(--ink-2)]">{fill(text)}</p>
+            </li>
+          ))}
+        </ol>
+      </Card>
 
       <div className="space-y-4">
         <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
@@ -69,9 +53,9 @@ export function PipelinePage({ state, onApplied }: { state: EngineState; onAppli
           <StatTile label="Pipeline latency p50" value={`${fmt(metrics?.latency.p50, 0)} ms`} hint={`p95 ${fmt(metrics?.latency.p95, 0)} ms`} />
           <StatTile label="CPU" value={`${fmt(metrics?.system.cpu_percent, 0)} %`} hint={`${metrics?.system.cores ?? '?'} cores = ${(metrics?.system.cores ?? 0) * 100}%`} />
           <StatTile label="Memory" value={`${fmt(metrics?.system.rss_mb, 0)} MB`} hint={metrics?.system.gpu_mem_mb ? `GPU ${fmt(metrics.system.gpu_mem_mb, 0)} MB` : undefined} />
-          <StatTile label="Out to browser" value={`${fmt((rates.bytes_out ?? 0) / 1e6, 2)} MB/s`} hint={`${metrics?.ws_clients ?? 0} clients, ${metrics?.ws_dropped ?? 0} msgs dropped`} />
-          <StatTile label="Embeddings / s" value={fmt(rates.embeddings, 0)} hint={`matcher queries ${fmt(rates.matcher_queries, 0)}/s`} />
-          <StatTile label="Frames dropped / s" value={fmt(rates.frames_dropped)} hint={`detector skipped ${fmt(rates.detector_skipped)}/s`} />
+          <StatTile label="Out to browser" value={`${fmt((rates.bytes_out ?? 0) / 1e3, 1)} KB/s`} hint={`${metrics?.ws_clients ?? 0} clients, ${metrics?.ws_dropped ?? 0} msgs dropped`} />
+          <StatTile label="Embeddings / s" value={fmt(rates.embeddings, 1)} hint={`quality skipped ${fmt(rates.quality_skipped, 0)}/s`} />
+          <StatTile label="Frames dropped / s" value={fmt(rates.frames_dropped)} hint="old frames the latest-frame reader threw away" />
         </div>
 
         <Card title="Throughput" subtitle="Frames per second over the last 90 s (all cameras)">
@@ -84,11 +68,11 @@ export function PipelinePage({ state, onApplied }: { state: EngineState; onAppli
           />
         </Card>
 
-        <Card title="Time per stage" subtitle="Mean milliseconds per batch (one frame from each camera). In live mode grab includes waiting for the next frame.">
+        <Card title="Time per stage" subtitle="Mean milliseconds per batch (one frame from each camera). Live, grab includes waiting for the next frame.">
           <HorizontalBars data={stageData} unit="ms" />
         </Card>
 
-        <Card title="Stage details" subtitle="p50 / p95 per call, including sub-stages">
+        <Card title="Stage details" subtitle="p50 / p95 per call, including the two parts of embed">
           <table className="w-full text-xs tabular-nums">
             <thead className="text-[var(--muted)]">
               <tr>

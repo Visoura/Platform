@@ -2,7 +2,6 @@ import argparse
 
 import cv2
 
-from ..flags import Flags
 from ..inference.detector import Detector
 from ..settings import PERSONS_DIR, VIDEOS_DIR
 
@@ -19,7 +18,7 @@ def main():
     ok, image = cap.read()
     if not ok:
         raise SystemExit("could not read that frame")
-    boxes = Detector(Flags(person_only=True, vectorized_boxes=True)).detect([image])[0]
+    boxes = Detector().detect([image])[0]
     boxes = sorted(boxes, key=lambda b: (b[3] - b[1]) * (b[2] - b[0]), reverse=True)[:args.count]
     stem = args.video.rsplit(".", 1)[0]
     for i, (x1, y1, x2, y2, _) in enumerate(boxes):

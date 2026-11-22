@@ -2,8 +2,6 @@ export const API_URL = import.meta.env.VITE_API_URL ?? `http://${location.hostna
 export const WEBRTC_URL = import.meta.env.VITE_WEBRTC_URL ?? `http://${location.hostname}:8889`;
 export const WS_URL = API_URL.replace(/^http/, 'ws') + '/ws';
 
-export type Flags = Record<string, boolean | number | string>;
-
 export interface Camera {
   id: string;
   fps: number;
@@ -12,23 +10,11 @@ export interface Camera {
   webrtc_path: string;
 }
 
-export interface FlagInfo {
-  group: string;
-  name: string;
-  label: string;
-  help: string;
-  kind: 'bool' | 'select' | 'number';
-  options: (string | number)[] | null;
-  unavailable: string | null;
-}
-
 export interface EngineState {
   status: 'starting' | 'running' | 'stopped' | 'error' | 'benchmarking';
   error: string | null;
   cameras: Camera[];
-  flags: Flags;
-  schema: FlagInfo[];
-  capabilities: { device: string; gpu: string; hwaccel: string | null; compiler: string | null; qdrant: boolean };
+  config: { device: string; gpu: string; detector: string; analysis_fps: number; match_threshold: number };
   bench_running: boolean;
 }
 
@@ -76,52 +62,29 @@ export interface Sighting {
   ended_at: number | null;
 }
 
-export interface BenchResult {
-  step: string;
-  change: Flags;
-  skipped: boolean;
-  flags?: Flags;
-  speedup?: number;
-  elapsed?: number;
-  throughput_fps?: number;
-  analyzed_fps?: number;
-  realtime_cameras?: number;
-  stage_ms_per_frame?: Record<string, number>;
-  cpu_percent?: number;
-  rss_mb?: number;
-  gpu_mem_mb?: number | null;
-  detections_per_frame?: number;
-  embeddings_per_frame?: number;
-  matches_per_frame?: number;
-  kb_out_per_frame?: number;
-  db_commits?: number;
-}
-
 export interface BenchReport {
   id: string;
-  mode: string;
   frames_per_camera: number;
   cameras: string[];
   device: string;
   gpu: string;
-  results: BenchResult[];
+  detector: string;
+  analysis_fps: number;
+  elapsed: number;
+  throughput_fps: number;
+  analyzed_fps: number;
+  realtime_cameras: number;
+  stage_ms_per_frame: Record<string, number>;
+  cpu_percent: number;
+  rss_mb: number;
+  detections_per_frame: number;
+  embeddings_per_frame: number;
+  matches_per_frame: number;
 }
 
 export interface BenchState {
   running: boolean;
-  step: string | null;
-  index: number;
-  total: number;
-  report: BenchReport | null;
   error: string | null;
-}
-
-export interface ReportInfo {
-  id: string;
-  mode: string;
-  device: string;
-  cameras: number;
-  frames_per_camera: number;
 }
 
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
@@ -138,7 +101,6 @@ const json = (method: string, body: unknown): RequestInit => ({
 
 export const api = {
   state: () => request<EngineState>('/api/state'),
-  applyFlags: (flags: Flags) => request<EngineState>('/api/flags', json('PUT', flags)),
   metrics: () => request<Metrics>('/api/metrics'),
   click: (camera: string, index: number, x: number, y: number) =>
     request<ClickResult>('/api/click', json('POST', { camera, index, x, y })),
@@ -153,9 +115,7 @@ export const api = {
     form.append('name', name);
     return request<Target>('/api/targets/photo', { method: 'POST', body: form });
   },
-  startBench: (mode: string, frames: number) => request<BenchState>('/api/bench', json('POST', { mode, frames })),
+  startBench: (frames: number) => request<BenchState>('/api/bench', json('POST', { frames })),
   bench: () => request<BenchState>('/api/bench'),
-  cancelBench: () => request<BenchState>('/api/bench/cancel', { method: 'POST' }),
-  reports: () => request<ReportInfo[]>('/api/bench/reports'),
-  report: (id: string) => request<BenchReport>(`/api/bench/reports/${id}`),
+  reports: () => request<BenchReport[]>('/api/bench/reports'),
 };

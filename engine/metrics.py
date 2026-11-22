@@ -79,27 +79,11 @@ def summarize(values):
 
 
 _process = psutil.Process()
-_children = {}
-
-
-def watch_process(pid):
-    _children[pid] = psutil.Process(pid)
-
-
-def unwatch_process(pid):
-    _children.pop(pid, None)
 
 
 def system_stats():
-    cpu = _process.cpu_percent()
-    rss = _process.memory_info().rss
-    for pid, p in list(_children.items()):
-        try:
-            cpu += p.cpu_percent()
-            rss += p.memory_info().rss
-        except psutil.NoSuchProcess:
-            _children.pop(pid, None)
-    stats = {"cpu_percent": cpu, "rss_mb": rss / 1e6, "cores": psutil.cpu_count(), "gpu_util": None, "gpu_mem_mb": None}
+    stats = {"cpu_percent": _process.cpu_percent(), "rss_mb": _process.memory_info().rss / 1e6,
+             "cores": psutil.cpu_count(), "gpu_util": None, "gpu_mem_mb": None}
     if DEVICE == "cuda":
         stats.update(nvidia_stats())
     elif DEVICE == "mps":

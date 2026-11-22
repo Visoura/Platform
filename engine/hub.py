@@ -1,5 +1,4 @@
 import asyncio
-import json
 import time
 
 CLIENT_QUEUE = 8
@@ -18,9 +17,6 @@ class Hub:
     def publish(self, message):
         if self.loop and self.clients:
             self.loop.call_soon_threadsafe(self._fanout, message)
-
-    def publish_json(self, data):
-        self.publish(json.dumps(data))
 
     def _fanout(self, message):
         for q in self.clients:
@@ -47,8 +43,5 @@ class Hub:
     async def _send(self, ws, q):
         while True:
             message = await q.get()
-            if isinstance(message, bytes):
-                await ws.send_bytes(message)
-            else:
-                await ws.send_text(message)
+            await ws.send_text(message)
             self.bytes_sent += len(message)

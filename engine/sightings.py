@@ -19,21 +19,7 @@ def connect():
     return db
 
 
-class SyncWriter:
-    def __init__(self, metrics):
-        self.db = connect()
-        self.metrics = metrics
-
-    def write(self, sql, params):
-        self.db.execute(sql, params)
-        self.db.commit()
-        self.metrics.count("db_commits")
-
-    def close(self):
-        self.db.close()
-
-
-class BatchedWriter:
+class Writer:
     def __init__(self, metrics, interval=0.5):
         self.db = connect()
         self.metrics = metrics

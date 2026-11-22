@@ -7,13 +7,13 @@ import uuid
 import cv2
 import numpy as np
 
-from . import bench, cameras, capabilities
-from . import flags as flag_store
-from .flags import normalize, schema
+from . import bench, cameras
+from .capabilities import gpu_name
 from .hub import Hub
+from .inference.models import Models
 from .metrics import Metrics
 from .pipeline.pipeline import Pipeline
-from .settings import PERSONS_DIR, WEBRTC_PORT
+from .settings import ANALYSIS_FPS, DEVICE, MATCH_THRESHOLD, PERSONS_DIR, WEBRTC_PORT
 from .targets import TargetStore, thumbnail
 
 
@@ -22,11 +22,11 @@ class Engine:
         self.cameras = cameras.scan()
         cameras.prepare(self.cameras)
         self.mediamtx = cameras.start_mediamtx(self.cameras)
-        self.caps = capabilities.detect()
-        self.flags = normalize(flag_store.load(), self.caps)
+        self.models = Models()
         self.metrics = Metrics()
         self.hub = Hub()
         self.targets = TargetStore()
+        self.targets.load_watchlist(self.models)
         self.pipeline = None
         self.thread = None
         self.stop_event = threading.Event()
@@ -34,8 +34,7 @@ class Engine:
         self.status = "starting"
         self.error = None
         self.clicks = {}
-        self.bench = {"running": False, "step": None, "index": 0, "total": 0, "report": None, "error": None}
-        self.bench_cancel = False
+        self.bench = {"running": False, "error": None}
         threading.Thread(target=self._tick, daemon=True).start()
 
     def _tick(self):
@@ -51,8 +50,7 @@ class Engine:
         self.status, self.error = "starting", None
         try:
             self.metrics.reset()
-            self.pipeline = Pipeline(self.flags, self.cameras, self.metrics, self.targets, hub=self.hub)
-            self.targets.load_watchlist(self.pipeline.models)
+            self.pipeline = Pipeline(self.cameras, self.metrics, self.targets, self.models, hub=self.hub)
         except Exception as e:
             traceback.print_exc()
             self.status, self.error, self.pipeline = "error", str(e), None
@@ -79,22 +77,18 @@ class Engine:
             self.pipeline = None
         self.status = "stopped"
 
-    def apply_flags(self, data):
-        with self.lock:
-            self.caps = capabilities.detect()
-            self.flags = normalize(flag_store.Flags.from_dict({**self.flags.to_dict(), **data}), self.caps)
-            flag_store.save(self.flags)
-            self._stop()
-            self._start()
-
     def state(self):
         return {
             "status": self.status,
             "error": self.error,
             "cameras": [c.to_dict() for c in self.cameras],
-            "flags": self.flags.to_dict(),
-            "schema": schema(self.flags, self.caps),
-            "capabilities": self.caps,
+            "config": {
+                "device": DEVICE,
+                "gpu": gpu_name(),
+                "detector": self.models.detector.name,
+                "analysis_fps": ANALYSIS_FPS,
+                "match_threshold": MATCH_THRESHOLD,
+            },
             "webrtc_port": WEBRTC_PORT,
             "bench_running": self.bench["running"],
         }
@@ -114,7 +108,7 @@ class Engine:
         embeddings = [pipeline.track_embedding(camera, d) for d in hits]
         missing = [i for i, e in enumerate(embeddings) if e is None]
         if missing:
-            for i, e in zip(missing, pipeline.models.embed_crops([crops[i] for i in missing])):
+            for i, e in zip(missing, self.models.embed_crops([crops[i] for i in missing])):
                 embeddings[i] = e
         token = uuid.uuid4().hex
         self.clicks[token] = [(crop, emb, d.target) for crop, emb, d in zip(crops, embeddings, hits)]
@@ -132,31 +126,26 @@ class Engine:
 
     def add_photo(self, data, name):
         image = cv2.imdecode(np.frombuffer(data, np.uint8), cv2.IMREAD_COLOR)
-        if image is None or not self.pipeline:
-            raise ValueError("could not read image or pipeline not running")
+        if image is None:
+            raise ValueError("could not read image")
         name = re.sub(r"[^A-Za-z0-9_-]+", "_", name).strip("_") or f"photo_{uuid.uuid4().hex[:6]}"
         cv2.imwrite(str(PERSONS_DIR / f"{name}.jpg"), image)
-        self.targets.load_watchlist(self.pipeline.models)
+        self.targets.load_watchlist(self.models)
         return self.targets.get(f"w-{name}").to_dict()
 
-    def start_bench(self, mode, frames):
+    def start_bench(self, frames):
         if self.bench["running"]:
             return False
-        self.bench = {"running": True, "step": None, "index": 0, "total": 0, "report": None, "error": None}
-        self.bench_cancel = False
-        threading.Thread(target=self._bench, args=(mode, frames), daemon=True).start()
+        self.bench = {"running": True, "error": None}
+        threading.Thread(target=self._bench, args=(frames,), daemon=True).start()
         return True
 
-    def _bench(self, mode, frames):
-        def progress(i, total, step):
-            self.bench.update(index=i, total=total, step=step)
-
+    def _bench(self, frames):
         with self.lock:
             self._stop()
             self.status = "benchmarking"
             try:
-                self.bench["report"] = bench.run(mode, self.cameras, self.targets, frames, self.flags,
-                                                 on_progress=progress, should_stop=lambda: self.bench_cancel)
+                bench.run(self.cameras, self.targets, self.models, frames)
             except Exception as e:
                 traceback.print_exc()
                 self.bench["error"] = str(e)

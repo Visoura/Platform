@@ -18,8 +18,6 @@ class Camera:
     fps: float
     width: int
     height: int
-    sub_width: int
-    sub_height: int
 
     @property
     def main_file(self):
@@ -29,14 +27,9 @@ class Camera:
     def sub_file(self):
         return CACHE_DIR / f"{self.id}_sub.mp4"
 
-    def path(self, sub):
-        return self.sub_file if sub else self.main_file
-
-    def url(self, sub):
-        return f"{RTSP_URL}/{self.id}{'_sub' if sub else ''}"
-
-    def size(self, sub):
-        return (self.sub_width, self.sub_height) if sub else (self.width, self.height)
+    @property
+    def sub_url(self):
+        return f"{RTSP_URL}/{self.id}_sub"
 
     def to_dict(self):
         return {"id": self.id, "fps": self.fps, "width": self.width, "height": self.height,
@@ -58,9 +51,7 @@ def scan():
     for path in sorted(VIDEOS_DIR.iterdir()):
         if path.suffix.lower() not in VIDEO_EXTENSIONS:
             continue
-        fps, width, height = probe(path)
-        sub_height = round(height * SUBSTREAM_WIDTH / width / 2) * 2
-        cameras.append(Camera(path.stem, path, fps, width, height, SUBSTREAM_WIDTH, sub_height))
+        cameras.append(Camera(path.stem, path, *probe(path)))
     return cameras
 
 

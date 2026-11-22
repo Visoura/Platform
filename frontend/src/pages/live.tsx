@@ -17,7 +17,6 @@ export function LivePage({ state }: { state: EngineState }) {
   const [selection, setSelection] = useState<Selection | null>(null);
   const [selectedTarget, setSelectedTarget] = useState<string | null>(null);
   const [showAll, setShowAll] = useState(true);
-  const webrtc = state.flags.video_out === 'webrtc';
   const columns = Math.ceil(Math.sqrt(state.cameras.length || 1));
 
   useEffect(() => {
@@ -54,7 +53,7 @@ export function LivePage({ state }: { state: EngineState }) {
     <div className="flex h-full">
       <div className="flex min-w-0 flex-1 flex-col gap-2 p-3">
         <div className="flex items-center gap-4 text-xs text-[var(--ink-2)]">
-          <span>{state.cameras.length} cameras · video: {String(state.flags.video_out)}</span>
+          <span>{state.cameras.length} cameras · video over WebRTC, boxes over websocket</span>
           <label className="flex items-center gap-1.5">
             <input type="checkbox" checked={showAll} onChange={(e) => setShowAll(e.target.checked)} />
             show all detections
@@ -63,7 +62,7 @@ export function LivePage({ state }: { state: EngineState }) {
         </div>
         <div className="grid min-h-0 flex-1 gap-2" style={{ gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`, gridAutoRows: '1fr' }}>
           {state.cameras.map((c) => (
-            <CameraTile key={c.id} camera={c} webrtc={webrtc} showAll={showAll} onClick={onClick} />
+            <CameraTile key={c.id} camera={c} showAll={showAll} onClick={onClick} />
           ))}
         </div>
       </div>

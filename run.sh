@@ -13,12 +13,6 @@ if [ ! -x .venv/bin/python ]; then
   exit 1
 fi
 
-if command -v docker >/dev/null && docker info >/dev/null 2>&1; then
-  docker compose up -d qdrant >/dev/null 2>&1 && echo "qdrant    running on :6333"
-else
-  echo "qdrant    skipped (Docker not running), the baseline matcher falls back to memory"
-fi
-
 if running engine; then
   echo "engine    already running (pid $(cat "$RUN/engine.pid"))"
 else

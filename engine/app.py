@@ -40,18 +40,11 @@ class Track(BaseModel):
 
 
 class BenchRequest(BaseModel):
-    mode: str = "ladder"
     frames: int = 300
 
 
 @app.get("/api/state")
 def state():
-    return engine.state()
-
-
-@app.put("/api/flags")
-async def put_flags(data: dict):
-    await run_in_threadpool(engine.apply_flags, data)
     return engine.state()
 
 
@@ -103,7 +96,7 @@ def history(target_id: str):
 
 @app.post("/api/bench")
 def start_bench(body: BenchRequest):
-    if not engine.start_bench(body.mode, body.frames):
+    if not engine.start_bench(body.frames):
         raise HTTPException(409, "a benchmark is already running")
     return engine.bench
 
@@ -113,20 +106,9 @@ def bench_status():
     return engine.bench
 
 
-@app.post("/api/bench/cancel")
-def cancel_bench():
-    engine.bench_cancel = True
-    return engine.bench
-
-
 @app.get("/api/bench/reports")
 def reports():
-    return bench.list_reports()
-
-
-@app.get("/api/bench/reports/{report_id}")
-def report(report_id: str):
-    return bench.load_report(report_id)
+    return bench.reports()
 
 
 @app.websocket("/ws")

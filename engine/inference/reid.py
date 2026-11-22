@@ -22,21 +22,11 @@ def load_model():
     return model.eval()
 
 
-class TorchEmbedder:
-    def __init__(self, fp16):
-        self.dtype = torch.float16 if fp16 and DEVICE != "cpu" else torch.float32
+class Embedder:
+    def __init__(self):
+        self.dtype = torch.float16 if DEVICE != "cpu" else torch.float32
         self.model = load_model().to(DEVICE, self.dtype)
 
     @torch.inference_mode()
     def __call__(self, crops):
-        return self.model(crops.to(DEVICE, self.dtype)).float().cpu().numpy()
-
-
-def build_embedder(flags):
-    if flags.compiled_embedder and DEVICE == "cuda":
-        from .tensorrt_reid import TensorRTEmbedder
-        return TensorRTEmbedder(flags.fp16)
-    if flags.compiled_embedder:
-        from .coreml_reid import CoreMLEmbedder
-        return CoreMLEmbedder(flags.fp16)
-    return TorchEmbedder(flags.fp16)
+        return self.model(crops.to(self.dtype)).float().cpu().numpy()

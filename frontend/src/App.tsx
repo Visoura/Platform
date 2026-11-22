@@ -14,7 +14,7 @@ const tabs = [
 ];
 
 export default function App() {
-  const [state, refreshState] = useEngineState();
+  const [state] = useEngineState();
 
   return (
     <BrowserRouter>
@@ -46,7 +46,7 @@ export default function App() {
           ) : (
             <Routes>
               <Route path="/" element={<LivePage state={state} />} />
-              <Route path="/pipeline" element={<PipelinePage state={state} onApplied={refreshState} />} />
+              <Route path="/pipeline" element={<PipelinePage state={state} />} />
               <Route path="/benchmark" element={<BenchmarkPage state={state} />} />
             </Routes>
           )}

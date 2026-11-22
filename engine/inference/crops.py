@@ -1,17 +1,8 @@
-import cv2
 import numpy as np
 import torch
-from PIL import Image
-from torchvision import transforms
 from torchvision.ops import roi_align
 
 from ..settings import DEVICE, REID_SIZE
-
-TRANSFORM = transforms.Compose([
-    transforms.Resize(REID_SIZE, interpolation=transforms.InterpolationMode.BICUBIC),
-    transforms.ToTensor(),
-    transforms.Normalize([0.5, 0.5, 0.5], [0.5, 0.5, 0.5]),
-])
 
 
 def clip_boxes(boxes, image):
@@ -24,16 +15,7 @@ def clip_boxes(boxes, image):
     return b
 
 
-def crops_cpu(images, boxes_per_image):
-    tensors = []
-    for image, boxes in zip(images, boxes_per_image):
-        for x1, y1, x2, y2 in clip_boxes(boxes, image):
-            rgb = cv2.cvtColor(image[y1:y2, x1:x2], cv2.COLOR_BGR2RGB)
-            tensors.append(TRANSFORM(Image.fromarray(rgb)).to(DEVICE))
-    return torch.stack(tensors)
-
-
-def crops_gpu(images, boxes_per_image):
+def crop_batch(images, boxes_per_image):
     out = []
     for image, boxes in zip(images, boxes_per_image):
         if not len(boxes):

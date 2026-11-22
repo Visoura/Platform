@@ -4,16 +4,6 @@ import threading
 DONE = object()
 
 
-def run_sequential(groups, stop):
-    stages = [stage for group in groups for stage in group]
-    while not stop.is_set():
-        item = None
-        for stage in stages:
-            item = stage(item)
-        if item is DONE:
-            return
-
-
 def run_pipelined(groups, stop, depth=2):
     queues = [queue.Queue(depth) for _ in groups[1:]]
 

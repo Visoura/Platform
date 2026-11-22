@@ -28,10 +28,3 @@ stop frontend TERM
 stop engine INT
 
 pkill -f "data/cache/mediamtx.yml" 2>/dev/null && echo "mediamtx leftover stopped"
-pkill -f "engine.inference.server" 2>/dev/null && echo "inference server leftover stopped"
-
-if [ "${1:-}" = "--all" ] && command -v docker >/dev/null; then
-  docker compose stop qdrant >/dev/null 2>&1 && echo "qdrant stopped"
-else
-  echo "qdrant left running (./stop.sh --all stops it too)"
-fi

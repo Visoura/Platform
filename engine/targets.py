@@ -30,8 +30,7 @@ def thumbnail(image, height=128):
 
 
 def person_crop(models, image):
-    boxes, _ = models.process([image])
-    boxes = boxes[0]
+    boxes = models.detect([image])[0]
     if len(boxes):
         areas = (boxes[:, 2] - boxes[:, 0]) * (boxes[:, 3] - boxes[:, 1])
         x1, y1, x2, y2 = boxes[areas.argmax(), :4].astype(int)
