@@ -27,4 +27,4 @@ stop() {
 stop frontend TERM
 stop engine INT
 
-pkill -f "data/cache/mediamtx.yml" 2>/dev/null && echo "mediamtx leftover stopped"
+if pkill -f "data/cache/mediamtx.yml" 2>/dev/null; then echo "mediamtx leftover stopped"; fi
